@@ -6,8 +6,8 @@ This is a simple **Quiz App** built with **React Native (Expo)** and **Expo Rout
 - Flexbox layouts (`flex`, `flexDirection`, `justifyContent`, `alignItems`, `gap`)
 - Expo Router **Groups**: routes live under `app/(quiz)/...` and have their own `_layout.tsx`
 - Score tracking + persistent **highest score** using AsyncStorage
-- `+not-found.tsx` for 404 routes (per the PDF)
-- Dynamic routes using `useLocalSearchParams` (per the PDF)
+- `+not-found.tsx` for 404 routes
+- Dynamic routes using `useLocalSearchParams`
 
 ## Run
 
