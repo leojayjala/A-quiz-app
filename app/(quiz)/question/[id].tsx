@@ -1,12 +1,27 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-import { questions } from "../../../data/questions";
+import { Question, questions as baseQuestions } from "../../../data/questions";
+import { loadQuestions } from "../../../data/quizStore";
 
 export default function QuestionDetails() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const n = id ? Number(id) : NaN;
-  const q = Number.isFinite(n) ? questions.find((x) => x.id === n) : undefined;
+  const [items, setItems] = useState<Question[]>(baseQuestions);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = await loadQuestions();
+      if (!cancelled) setItems(stored);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const q = Number.isFinite(n) ? items.find((x) => x.id === n) : undefined;
 
   return (
     <View style={styles.screen}>

@@ -1,9 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-import { Question, questions } from "../../data/questions";
+import { Question, questions as baseQuestions } from "../../data/questions";
+import { loadQuestions, loadTimerSeconds } from "../../data/quizStore";
 
 const STORAGE_KEY_HIGHEST = "quiz.highestScore.v1";
 const STORAGE_KEY_LAST = "quiz.lastScore.v1";
@@ -30,10 +31,15 @@ function isCorrect(q: Question, user: AnswerValue | undefined): boolean {
 }
 
 export default function QuizScreen() {
+  const [items, setItems] = useState<Question[]>(baseQuestions);
+  const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswersById>({});
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const q = questions[index]!;
+  const q = items[index];
 
   const answeredCount = useMemo(
     () => Object.keys(answers).filter((k) => answers[Number(k)] != null).length,
@@ -42,18 +48,22 @@ export default function QuizScreen() {
 
   const scoreSoFar = useMemo(() => {
     let score = 0;
-    for (const qq of questions) {
+    for (const qq of items) {
       const a = answers[qq.id];
       if (a == null) continue;
       if (isCorrect(qq, a)) score += 1;
     }
     return score;
-  }, [answers]);
+  }, [answers, items]);
 
-  const isLast = index === questions.length - 1;
+  const isLast = index === items.length - 1;
 
   async function finishQuiz() {
     const finalScore = scoreSoFar;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     await AsyncStorage.setItem(STORAGE_KEY_LAST, String(finalScore));
 
     const rawHighest = await AsyncStorage.getItem(STORAGE_KEY_HIGHEST);
@@ -63,6 +73,53 @@ export default function QuizScreen() {
     }
 
     router.replace("/(quiz)/results");
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = await loadQuestions();
+      const timer = await loadTimerSeconds();
+      if (cancelled) return;
+      setItems(stored);
+      setTimerSeconds(timer);
+      setTimeLeft(timer > 0 ? timer : null);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!timerSeconds || timerSeconds <= 0) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev == null) return prev;
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = null;
+          void finishQuiz();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [loading, timerSeconds]);
+
+  function formatTime(totalSeconds: number | null) {
+    if (totalSeconds == null) return "";
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
 
   function toggleCheckboxChoice(qid: number, key: string) {
@@ -79,25 +136,40 @@ export default function QuizScreen() {
     setAnswers((prev) => ({ ...prev, [qid]: key }));
   }
 
-  const currentAnswer = answers[q.id];
+  const currentAnswer = q ? answers[q.id] : undefined;
+
+  if (loading || !q) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.card}>
+          <Text style={styles.prompt}>Loading quiz...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
-          Question {index + 1} / {questions.length}
+          Question {index + 1} / {items.length}
         </Text>
         <View style={styles.headerRow}>
           <View style={styles.pill}>
             <Text style={styles.pillText}>
-              Answered: {answeredCount} / {questions.length}
+              Answered: {answeredCount} / {items.length}
             </Text>
           </View>
           <View style={styles.pill}>
             <Text style={styles.pillText}>
-              Score: {scoreSoFar} / {questions.length}
+              Score: {scoreSoFar} / {items.length}
             </Text>
           </View>
+          {timeLeft != null ? (
+            <View style={styles.pill}>
+              <Text style={styles.pillText}>Time: {formatTime(timeLeft)}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -157,7 +229,7 @@ export default function QuizScreen() {
             activeOpacity={0.85}
             onPress={() => {
               if (isLast) void finishQuiz();
-              else setIndex((i) => Math.min(questions.length - 1, i + 1));
+              else setIndex((i) => Math.min(items.length - 1, i + 1));
             }}
           >
             <Text style={styles.btnText}>{isLast ? "Finish" : "Next"}</Text>

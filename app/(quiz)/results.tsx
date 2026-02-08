@@ -3,7 +3,8 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-import { questions } from "../../data/questions";
+import { questions as baseQuestions } from "../../data/questions";
+import { loadQuestions } from "../../data/quizStore";
 
 const STORAGE_KEY_HIGHEST = "quiz.highestScore.v1";
 const STORAGE_KEY_LAST = "quiz.lastScore.v1";
@@ -11,6 +12,7 @@ const STORAGE_KEY_LAST = "quiz.lastScore.v1";
 export default function ResultsScreen() {
   const [highest, setHighest] = useState(0);
   const [last, setLast] = useState(0);
+  const [total, setTotal] = useState(baseQuestions.length);
 
   useFocusEffect(
     useCallback(() => {
@@ -20,9 +22,11 @@ export default function ResultsScreen() {
         const rawLast = await AsyncStorage.getItem(STORAGE_KEY_LAST);
         const h = rawHighest ? Number(rawHighest) : 0;
         const l = rawLast ? Number(rawLast) : 0;
+        const q = await loadQuestions();
         if (cancelled) return;
         setHighest(Number.isFinite(h) ? h : 0);
         setLast(Number.isFinite(l) ? l : 0);
+        setTotal(q.length);
       })();
       return () => {
         cancelled = true;
@@ -36,10 +40,10 @@ export default function ResultsScreen() {
         <Text style={styles.title}>Results</Text>
 
         <Text style={styles.big}>
-          {last} / {questions.length}
+          {last} / {total}
         </Text>
         <Text style={styles.meta}>
-          Highest score achieved: {highest} / {questions.length}
+          Highest score achieved: {highest} / {total}
         </Text>
 
         <View style={styles.actions}>
